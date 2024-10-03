@@ -1,7 +1,10 @@
 package modules
 
 import (
+	"context"
 	"flag"
+
+	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 )
 
 type ExampleModule struct {
@@ -26,4 +29,9 @@ func (m *ExampleModule) ParseFlags(args []string) error {
 
 func NewExampleModule() Module {
 	return &ExampleModule{}
+}
+
+func (m *ExampleModule) Run(apiClient *datadog.APIClient, ctx context.Context) error {
+	// Run the module
+	return nil
 }
