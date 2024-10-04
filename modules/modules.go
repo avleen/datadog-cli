@@ -42,7 +42,7 @@ func GetStructKeysAsCSV(s interface{}) string {
 	var csv string
 	v := reflect.ValueOf(s)
 	for i := 0; i < v.NumField(); i++ {
-		csv += fmt.Sprintf("%v,", v.Field(i).Interface())
+		csv += fmt.Sprintf("%v,", v.Type().Field(i).Name)
 	}
 	return csv
 }
