@@ -23,4 +23,5 @@ func RegisterAllModules() {
 	RegisterModule(NewExampleModule())
 	RegisterModule(NewMetricsModule())
 	RegisterModule(NewContainersModule())
+	RegisterModule(NewHostsModule())
 }

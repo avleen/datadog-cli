@@ -7,62 +7,49 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
-	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
+	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV1"
 )
 
 // To make a new module, rename this struct, any references to it, and the file name
-type ContainersModule struct {
-	outputFile        string
-	containerGrouping string
-	groupingKey       string
+type HostsModule struct {
+	outputFile string
+	limit      int64
 }
 
 // Name returns the name of the module.
 // This is the name that the user will use to run the module.
-func (m *ContainersModule) Name() string {
-	return "containers"
+func (m *HostsModule) Name() string {
+	return "hosts"
 }
 
 // ParseFlags parses the flags for the module.
 // Put any command line options you want to support here.
 // The options are saved in the module struct, above. Remmember to add them there too!
-func (m *ContainersModule) ParseFlags(args []string) error {
+func (m *HostsModule) ParseFlags(args []string) error {
 	fs := flag.NewFlagSet(m.Name(), flag.ContinueOnError)
 	// Collect the output file name
 	fs.StringVar(&m.outputFile, "output", "", "Output file name. If blank, output to stdout.")
-	fs.StringVar(&m.containerGrouping, "grouping", "ungrouped", "Specify the type of containers (ungrouped|grouped).")
-	fs.StringVar(&m.groupingKey, "grouping-key", "image_name", "Specify the key to group containers by.")
+	fs.Int64Var(&m.limit, "limit", 1000, "Limit the number of results returned. The API can currently return a maximum of 1000 results.")
 	err := fs.Parse(args)
 	if err != nil {
 		return err
 	}
-	// Check the value of the containers flag
-	if m.containerGrouping != "ungrouped" && m.containerGrouping != "grouped" {
-		fmt.Fprintf(os.Stderr, "Invalid value for containers flag: %s\n", m.containerGrouping)
-		os.Exit(1)
-	}
-
 	return nil
 }
 
 // Rename this method and add it to the bottom of modules/register.go to register your module.
-func NewContainersModule() Module {
-	return &ContainersModule{}
+func NewHostsModule() Module {
+	return &HostsModule{}
 }
 
 // All modules must implement the Run method. This is called from main.go as the entry point for the module.
-func (m *ContainersModule) Run(apiClient *datadog.APIClient, ctx context.Context) error {
+func (m *HostsModule) Run(apiClient *datadog.APIClient, ctx context.Context) error {
 	// Run the module
-	containersApi := datadogV2.NewContainersApi(apiClient)
-	optionalParameters := datadogV2.NewListContainersOptionalParameters()
-	optionalParameters.WithPageSize(1000)
-	if m.containerGrouping == "grouped" {
-		// Create a channel to unmarshal the results
-		optionalParameters.WithGroupBy(m.groupingKey)
-	}
+	hostsApi := datadogV1.NewHostsApi(apiClient)
+	optionalParameters := datadogV1.NewListHostsOptionalParameters()
+	optionalParameters.WithCount(m.limit)
 
 	// Create a wait group to wait for the goroutines to finish
 	var wg sync.WaitGroup
@@ -77,13 +64,15 @@ func (m *ContainersModule) Run(apiClient *datadog.APIClient, ctx context.Context
 	}()
 
 	// Count the number of records processed
-	count := 0
+	// count := 0
 	// Note the start time
-	start := time.Now()
+	// start := time.Now()
 
 	// Call the API
-	resp, _ := containersApi.ListContainersWithPagination(ctx, *optionalParameters)
-	for paginationResult := range resp {
+	resp, httpResp, _ := hostsApi.ListHosts(ctx, *optionalParameters)
+	// The following code was copied from the containers module. Unfortunately the DataDog API for ListHosts has no pagination.
+	// Hopefully one day it will and we can use this code.
+	/* for paginationResult := range resp {
 		if paginationResult.Error != nil {
 			fmt.Fprintf(os.Stderr, "Error when calling `ContainersApi.ListContainersWithPagination`: %v\n", paginationResult.Error)
 		}
@@ -99,12 +88,21 @@ func (m *ContainersModule) Run(apiClient *datadog.APIClient, ctx context.Context
 			elapsed := time.Since(start)
 			fmt.Fprintf(os.Stderr, "Processed %d records at %.2f records/second\n", count, float64(count)/elapsed.Seconds())
 		}
+	} */
+	if httpResp.StatusCode != 200 {
+		fmt.Fprintf(os.Stderr, "Error when calling `HostsApi.ListHosts`: %v\n", httpResp.Status)
 	}
+	jsonItem, _ := json.MarshalIndent(resp, "", "  ")
+	resultsChan <- jsonItem
+	// wait for the goroutine to finish
 	wg.Wait()
 	return nil
 }
 
-func (m *ContainersModule) processResults(results chan []byte) {
+func (m *HostsModule) processResults(results chan []byte) {
+	// TODO: For some reason writing the results to stdout is not working. It's not clear why.
+	// I think there's a race condition somewhere.
+	// Writing to a file is fine.
 	var output *os.File
 	var err error
 	if m.outputFile != "" {
