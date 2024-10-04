@@ -32,9 +32,9 @@ func (m *ContainersModule) Name() string {
 func (m *ContainersModule) ParseFlags(args []string) error {
 	fs := flag.NewFlagSet(m.Name(), flag.ContinueOnError)
 	// Collect the output file name
-	fs.StringVar(&m.outputFile, "output", "output.json", "Output file name")
-	fs.StringVar(&m.containerGrouping, "grouping", "ungrouped", "Specify the type of containers (ungrouped|grouped)")
-	fs.StringVar(&m.groupingKey, "grouping-key", "image_name", "Specify the key to group containers by")
+	fs.StringVar(&m.outputFile, "output", "", "Output file name. If blank, output to stdout.")
+	fs.StringVar(&m.containerGrouping, "grouping", "ungrouped", "Specify the type of containers (ungrouped|grouped).")
+	fs.StringVar(&m.groupingKey, "grouping-key", "image_name", "Specify the key to group containers by.")
 	err := fs.Parse(args)
 	if err != nil {
 		return err
@@ -97,23 +97,31 @@ func (m *ContainersModule) Run(apiClient *datadog.APIClient, ctx context.Context
 		// Every 10,000 records, print a message with the count and the records/second since start
 		if count%10000 == 0 {
 			elapsed := time.Since(start)
-			fmt.Printf("Processed %d records at %.2f records/second\n", count, float64(count)/elapsed.Seconds())
+			fmt.Fprintf(os.Stderr, "Processed %d records at %.2f records/second\n", count, float64(count)/elapsed.Seconds())
 		}
 	}
 	return nil
 }
 
 func (m *ContainersModule) processResults(results chan []byte) {
-	file, err := os.Create(m.outputFile)
-	defer file.Close()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
-		os.Exit(1)
+	var output *os.File
+	var err error
+	if m.outputFile != "" {
+		output, err = os.Create(m.outputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Writing output to %s\n", m.outputFile)
+	} else {
+		output = os.Stdout
 	}
+	defer output.Close()
+
 	for result := range results {
 		// Write the JSON string to the file
-		file.Write(result)
-		file.Write([]byte("\n"))
-		file.Sync()
+		output.Write(result)
+		output.Write([]byte("\n"))
+		output.Sync()
 	}
 }

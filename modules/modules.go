@@ -31,8 +31,8 @@ func getToFrom(from string, to string) (int64, int64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	fmt.Printf("Original: %s, Parsed: %s\n", from, fromTime.Format(time.RFC3339))
-	fmt.Printf("Original: %s, Parsed: %s\n", to, toTime.Format(time.RFC3339))
+	fmt.Printf("Start time: %s\n", fromTime.Format(time.RFC3339))
+	fmt.Printf("End time: %s\n", toTime.Format(time.RFC3339))
 	return int64(fromTime.Unix()), int64(toTime.Unix()), nil
 }
 
