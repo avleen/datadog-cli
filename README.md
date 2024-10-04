@@ -9,7 +9,8 @@ DataDog provides rich visualisations of your metrics, logs and infrastructure bu
 
 `datadog-cli` will eventually support downloading all data from DataDog.
 Today the following modules are available:
-* Metrics
+* Metrics: Specify a query to run and download the timeseries for it.
+* Containers: Download your current list of running containers, either as a raw list, or grouped by a given key (e.g. `image_name`)
 
 # Building
 ```
