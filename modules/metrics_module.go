@@ -28,7 +28,7 @@ func (m *MetricsModule) ParseFlags(args []string) error {
 	defaultFrom := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
 	fs := flag.NewFlagSet(m.Name(), flag.ContinueOnError)
 	// Collect the output file name
-	fs.StringVar(&m.outputFile, "output", "output.csv", "Output file name")
+	fs.StringVar(&m.outputFile, "output", "", "Output file name. If blank, output to stdout.")
 	// Collect the from and to times
 	fs.StringVar(&m.from, "from", defaultFrom, "From time: 31/12/2023, 31 Dec 2023...")
 	fs.StringVar(&m.to, "to", defaultTo, "To time: 31/12/2023, 31 Dec 2023...")
@@ -79,12 +79,19 @@ func (m *MetricsModule) Run(apiClient *datadog.APIClient, ctx context.Context) e
 	}
 
 	// Create the output file
-	filename := fmt.Sprintf(m.outputFile)
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
+	var output *os.File
+	var osErr error
+	if m.outputFile != "" {
+		output, osErr = os.Create(m.outputFile)
+		if osErr != nil {
+			fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Writing output to %s\n", m.outputFile)
+	} else {
+		output = os.Stdout
 	}
-	defer f.Close()
+	defer output.Close()
 
 	// TODO: Create headers in the CSV file based on the queries
 
@@ -115,18 +122,17 @@ func (m *MetricsModule) Run(apiClient *datadog.APIClient, ctx context.Context) e
 
 	// Write the header to a file
 	header := GetStructKeysAsCSV(MetricsData{})
-	_, err = f.WriteString(header + "\n")
+	_, err = output.WriteString(header + "\n")
 	if err != nil {
 		return fmt.Errorf("error writing header to file: %v", err)
 	}
 
 	// Write the data rows
 	for _, data := range result {
-		_, err := f.WriteString(fmt.Sprintf("%s,%f,%f\n", data.Scope, data.Timestamp, data.Value))
+		_, err := output.WriteString(fmt.Sprintf("%s,%f,%f\n", data.Scope, data.Timestamp, data.Value))
 		if err != nil {
 			return err
 		}
 	}
-	fmt.Printf("Data written to %s\n", filename)
 	return nil
 }
