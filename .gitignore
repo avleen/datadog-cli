@@ -1,2 +1,4 @@
 /.vscode
 cmd/datadog-cli/output.csv
+output.json
+datadog-cli
