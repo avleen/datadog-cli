@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
+	"time"
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV1"
@@ -15,6 +15,7 @@ type MetricsModule struct {
 	outputFile string
 	from       string
 	to         string
+	query      string
 }
 
 func (m *MetricsModule) Name() string {
@@ -22,15 +23,32 @@ func (m *MetricsModule) Name() string {
 }
 
 func (m *MetricsModule) ParseFlags(args []string) error {
+	// For the defaults for to and from, we use the current time and the time 1 hour hour ago.
+	defaultTo := time.Now().Format(time.RFC3339)
+	defaultFrom := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
 	fs := flag.NewFlagSet(m.Name(), flag.ContinueOnError)
 	// Collect the output file name
-	fs.StringVar(&m.outputFile, "output", "", "Output file name")
+	fs.StringVar(&m.outputFile, "output", "output.csv", "Output file name")
 	// Collect the from and to times
-	fs.StringVar(&m.from, "from", "", "From time: 1 hour ago, 2 weeks ago..")
-	fs.StringVar(&m.to, "to", "", "To time: now, 5 minutes ago..")
+	fs.StringVar(&m.from, "from", defaultFrom, "From time: 31/12/2023, 31 Dec 2023...")
+	fs.StringVar(&m.to, "to", defaultTo, "To time: 31/12/2023, 31 Dec 2023...")
+	fs.StringVar(&m.query, "query", "avg:system.cpu.user{*}", "Query to run")
+
+	// Capture the help flag
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", m.Name())
+		fs.PrintDefaults()
+	}
+
 	err := fs.Parse(args)
 	if err != nil {
 		return err
+	}
+
+	// If help flag is provided, print usage and return an error to stop execution
+	if fs.Parsed() && len(args) > 0 && args[0] == "--help" {
+		fs.Usage()
+		return flag.ErrHelp
 	}
 
 	return nil
@@ -75,11 +93,10 @@ func (m *MetricsModule) Run(apiClient *datadog.APIClient, ctx context.Context) e
 		Timestamp float64
 		Value     float64
 	}
-	sums := make(map[string]MetricsData)
+	var result []MetricsData
 
 	// Run the query
-	bytes_query := "sum:gcp.bigquery.storage.uploaded_bytes{*} by {project_id}.as_count()"
-	resp, err := RunQuery(ctx, metricsApi, fromTime, toTime, bytes_query)
+	resp, err := RunQuery(ctx, metricsApi, fromTime, toTime, m.query)
 	if err != nil {
 		return err
 	}
@@ -92,24 +109,20 @@ func (m *MetricsModule) Run(apiClient *datadog.APIClient, ctx context.Context) e
 				continue
 			}
 			pvalue := point[1]
-			if metric, exists := sums[series.GetScope()]; exists {
-				metric.Value += *pvalue
-			} else {
-				sums[series.GetScope()] = MetricsData{Scope: series.GetScope(), Timestamp: *point[0], Value: *pvalue}
-			}
+			result = append(result, MetricsData{Scope: series.GetScope(), Timestamp: *point[0], Value: *pvalue})
 		}
 	}
 
-	// Sort the list of sums and print the result
-	var keys []string
-	for k := range sums {
-		keys = append(keys, k)
+	// Write the header to a file
+	header := GetStructKeysAsCSV(MetricsData{})
+	_, err = f.WriteString(header + "\n")
+	if err != nil {
+		return fmt.Errorf("error writing header to file: %v", err)
 	}
-	sort.Strings(keys)
 
-	// Write the data to a file
-	for _, scope := range keys {
-		_, err := f.WriteString(fmt.Sprintf("%s,%f,%f\n", scope, sums[scope].Timestamp, sums[scope].Value))
+	// Write the data rows
+	for _, data := range result {
+		_, err := f.WriteString(fmt.Sprintf("%s,%f,%f\n", data.Scope, data.Timestamp, data.Value))
 		if err != nil {
 			return err
 		}

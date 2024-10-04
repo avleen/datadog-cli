@@ -3,6 +3,7 @@ package modules
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
@@ -33,4 +34,15 @@ func getToFrom(from string, to string) (int64, int64, error) {
 	fmt.Printf("Original: %s, Parsed: %s\n", from, fromTime.Format(time.RFC3339))
 	fmt.Printf("Original: %s, Parsed: %s\n", to, toTime.Format(time.RFC3339))
 	return int64(fromTime.Unix()), int64(toTime.Unix()), nil
+}
+
+func GetStructKeysAsCSV(s interface{}) string {
+	// Convert the struct fields to a CSV string.
+	// This is useful for writing a header row to a CSV file.
+	var csv string
+	v := reflect.ValueOf(s)
+	for i := 0; i < v.NumField(); i++ {
+		csv += fmt.Sprintf("%v,", v.Field(i).Interface())
+	}
+	return csv
 }
