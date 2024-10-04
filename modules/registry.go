@@ -22,4 +22,5 @@ func GetModule(name string) (Module, bool) {
 func RegisterAllModules() {
 	RegisterModule(NewExampleModule())
 	RegisterModule(NewMetricsModule())
+	RegisterModule(NewContainersModule())
 }
